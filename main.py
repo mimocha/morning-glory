@@ -1,11 +1,20 @@
 from datetime import datetime
+import os
+import random; random.seed()
+
+from PIL import Image, ImageFont, ImageDraw
+
+import dictionary as d
+
+FONTS_DIR = "./fonts/"
+IMAGE = "profile images/flower.jpg"
 
 
 def get_date_info() -> dict:
 	date_info = {
-		"day_of_week" : -1,
-		"is_holyday": False,
-		"is_holiday": False,
+		"day_of_week" : -1, # ISO-style day of week: Monday==1, Sunday==7
+		"is_holy_day": False, # วันพระ
+		"is_holiday": False, # Special holiday flags
 		"holiday_name": ""
 	}
 
@@ -21,28 +30,44 @@ def get_date_info() -> dict:
 	return date_info
 
 
-def generate_blessing(date_info: dict) -> str:
+def generate_greetings(date_info: dict) -> list():
 	# 2.1 Generate based on day of week
+	text_greet = d.greetings + d.dow_th.get(date_info["day_of_week"], "วันนี้")
+	text_bless = d.blessings
+	output = [text_greet, text_bless]
+
 	# 2.2 Generate based on holidays
-	return
+	return output
 
 
-def get_stock_image(date_info: dict):
+def get_stock_image(date_info: dict) -> Image:
 	# 3.1 Flowers / Nature / Buddhist images
 	# 3.2 Image color based on day of week
-	return
+	im = Image.open(IMAGE)
+
+	return im
 
 
-def generate_image(blessing: str, stock_image):
+def compose_image(greetings: list, image: Image):
 	# 4.1 Select random font / text styling 
+	# 4.1.1 Select random font
+	font_list = [f.path for f in os.scandir(FONTS_DIR)]
+	font_path = random.choice(font_list)
+	font = ImageFont.truetype(font_path, size=50, encoding="unic")
+
 	# 4.2 Place text on image
+	draw = ImageDraw.Draw(image)
+	draw.text((100, 100), greetings[0], font=font)
+	draw.text((100, 200), greetings[1], font=font)
+
 	# 4.3 Crop & export for tweet
-	return
+	return image
 
 
-def post_result():
+def post_result(image: Image):
 	# 5.1 Read credential
 	# 5.2 Tweet
+	output_image.show()
 	return
 
 
@@ -53,16 +78,16 @@ if __name__ == "__main__":
 	date_info = get_date_info()
 
 	# 2. Generate random blessing
-	blessing = generate_blessing(date_info)
+	greetings = generate_greetings(date_info)
 
 	# 3. Get random stock image
 	stock_image = get_stock_image(date_info)
 
 	# 4. Generate blessing image
-	output_image = generate_image(blessing, stock_image)
+	output_image = compose_image(greetings, stock_image)
 
 	# 5. Post to Twitter
-	ret = post_result()
+	ret = post_result(output_image)
 
 	# Auto-shutdown VM on success
 	exit()
