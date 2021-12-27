@@ -46,3 +46,20 @@ __bless_object = [
 	"ปลอดโรคภัย",
 ]
 blessings = random.choice(__bless_verb) + random.choice(__bless_object)
+
+
+text_positions = random.choice([
+	"tl",
+	"mid"
+])
+
+
+text_fill = {
+	1: (247, 225, 27), # Mon
+	2: (242, 160, 236), # Tue
+	3: (84, 230, 62), # Wed
+	4: (250, 182, 25), # Thur
+	5: (30, 225, 250), # Fri
+	6: (215, 52, 247), # Sat
+	7: (242, 46, 66) # Sun
+}

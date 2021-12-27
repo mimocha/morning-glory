@@ -7,7 +7,7 @@ from PIL import Image, ImageFont, ImageDraw
 import dictionary as d
 
 FONTS_DIR = "./fonts/"
-IMAGE = "profile images/flower.jpg"
+IMAGES_DIR = "./images/"
 
 
 def get_date_info() -> dict:
@@ -43,31 +43,62 @@ def generate_greetings(date_info: dict) -> list():
 def get_stock_image(date_info: dict) -> Image:
 	# 3.1 Flowers / Nature / Buddhist images
 	# 3.2 Image color based on day of week
-	im = Image.open(IMAGE)
+	image_list = [f.path for f in os.scandir(IMAGES_DIR)]
+	image_path = random.choice(image_list)
+	image = Image.open(image_path)
 
-	return im
+	# 3.3 Center crop to square image
+	xy = image.size # Original Image Dimension
+	dim = min(min(xy), 800) # Cropped Dimension, cap to 800
+	half = round(dim/2) # Half of New Dimension
+	c = [round(c/2) for c in xy] # Center Coordinate XY
+	lurl = (c[0]-half, c[1]-half, c[0]+half, c[1]+half) # Left, Upper, Right, Lower
+	image = image.crop(box=lurl)
+
+	return image
 
 
-def compose_image(greetings: list, image: Image):
+def compose_image(date_info: dict, greetings: list, image: Image):
 	# 4.1 Select random font / text styling 
 	# 4.1.1 Select random font
 	font_list = [f.path for f in os.scandir(FONTS_DIR)]
 	font_path = random.choice(font_list)
-	font = ImageFont.truetype(font_path, size=50, encoding="unic")
+	print(font_path)
+	font = ImageFont.truetype(font_path, size=72, encoding="unic")
 
 	# 4.2 Place text on image
 	draw = ImageDraw.Draw(image)
-	draw.text((100, 100), greetings[0], font=font)
-	draw.text((100, 200), greetings[1], font=font)
+	fill = d.text_fill[date_info["day_of_week"]] # Color by day of week
+	stroke_fill = (255, 255, 255)
+	coords = [(100, 100), (100, 200)]
+	for text, xy in zip(greetings, coords):
+		draw.text(
+			xy, text, 
+			font=font, 
+			fill=fill, 
+			stroke_fill=stroke_fill,
+			stroke_width=3
+		)
 
-	# 4.3 Crop & export for tweet
+	# 4.3 Watermark image
+	font = ImageFont.truetype(font_path, size=24, encoding="unic")
+	xy = image.size
+	xy = [c-20 for c in xy]
+	draw.text(
+		xy, 
+		"@MorningGloryBot", 
+		font=font,
+		fill=(255, 255, 255),
+		anchor="rb"
+	)
+
 	return image
 
 
 def post_result(image: Image):
 	# 5.1 Read credential
 	# 5.2 Tweet
-	output_image.show()
+	image.show()
 	return
 
 
@@ -84,7 +115,7 @@ if __name__ == "__main__":
 	stock_image = get_stock_image(date_info)
 
 	# 4. Generate blessing image
-	output_image = compose_image(greetings, stock_image)
+	output_image = compose_image(date_info, greetings, stock_image)
 
 	# 5. Post to Twitter
 	ret = post_result(output_image)
