@@ -10,6 +10,7 @@ import dictionary as d
 
 FONTS_DIR = "./fonts/"
 IMAGES_DIR = "./images/"
+
 CREDENTIALS = "credentials.json"
 
 
@@ -102,10 +103,12 @@ def post_result(image: Image):
 	# 5.1 Read credential
 	with open(CREDENTIALS, "r") as fp:
 		auth = json.load(fp)
-		consumer_key = auth.get("Access Token")
-		consumer_secret = auth.get("Access Token Secret")
+		consumer_key = auth.get("API Key")
+		consumer_secret = auth.get("API Key Secret")
 
 	# 5.2 Tweet
+	payload = {"text": "Hello OAuth1"}
+
 	# Get request token
 	request_token_url = "https://api.twitter.com/oauth/request_token"
 	oauth = OAuth1Session(consumer_key, client_secret=consumer_secret)
