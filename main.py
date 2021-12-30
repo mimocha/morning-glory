@@ -4,7 +4,7 @@ import os
 import random; random.seed()
 
 from PIL import Image, ImageFont, ImageDraw
-from twitter import Twitter, OAuth
+import tweepy
 
 import dictionary as d
 
@@ -100,33 +100,32 @@ def compose_image(date_info: dict, greetings: list, image: Image):
 
 
 def post_result(image: Image):
-	# 5.1 Read credentials and make OAuth
+	# 5.1 Read credentials and setup OAuth
 	with open(CREDENTIALS, "r") as fp:
 		auth = json.load(fp)
 		# Aliases for different tokens:
 		# https://developer.twitter.com/en/docs/authentication/oauth-1-0a/obtaining-user-access-tokens
-		token = auth.get("Access Token")
-		token_secret = auth.get("Access Token Secret")
+		access_token = auth.get("Access Token")
+		access_token_secret = auth.get("Access Token Secret")
 		consumer_key = auth.get("API Key")
 		consumer_secret = auth.get("API Key Secret")
 
-		oauth_data = OAuth(token, token_secret, consumer_key, consumer_secret)
+		auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+		auth.set_access_token(access_token, access_token_secret)
 
 	# 5.2 Setup Twitter APIs
-	t_tweet = Twitter(auth=oauth_data)
-	t_upload = Twitter(domain='upload.twitter.com', auth=oauth_data)
+	api = tweepy.API(auth)
 
 	# 5.3 Save PIL image to disk
 	image.save("image.jpg")
 
 	# 5.4 Upload saved binary to twitter
-	with open("image.jpg", "rb") as fp:
-		# Get the return value
-		ret = t_upload.media.upload(media=fp.read())
+	data = api.media_upload("image.jpg")
 
 	# 5.5 Attach the media id to tweet the image
-	media_id = ret.get("media_id_string")
-	t_tweet.statuses.update(media_ids=media_id)
+	# Media ID is attached as a list of string ["12345...", ...]
+	# One media_id_string per image.
+	api.update_status(media_ids=[data.media_id_string], status="")
 
 	# 5.6 Delete temporary image on disk
 	os.remove("image.jpg")
