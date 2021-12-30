@@ -4,7 +4,7 @@ import os
 import random; random.seed()
 
 from PIL import Image, ImageFont, ImageDraw
-from requests_oauthlib import OAuth1Session
+from twitter import Twitter, OAuth
 
 import dictionary as d
 
@@ -100,75 +100,37 @@ def compose_image(date_info: dict, greetings: list, image: Image):
 
 
 def post_result(image: Image):
-	# 5.1 Read credential
+	# 5.1 Read credentials and make OAuth
 	with open(CREDENTIALS, "r") as fp:
 		auth = json.load(fp)
+		# Aliases for different tokens:
+		# https://developer.twitter.com/en/docs/authentication/oauth-1-0a/obtaining-user-access-tokens
+		token = auth.get("Access Token")
+		token_secret = auth.get("Access Token Secret")
 		consumer_key = auth.get("API Key")
 		consumer_secret = auth.get("API Key Secret")
 
-	# 5.2 Tweet
-	payload = {"text": "Hello OAuth1"}
+		oauth_data = OAuth(token, token_secret, consumer_key, consumer_secret)
 
-	# Get request token
-	request_token_url = "https://api.twitter.com/oauth/request_token"
-	oauth = OAuth1Session(consumer_key, client_secret=consumer_secret)
+	# 5.2 Setup Twitter APIs
+	t_tweet = Twitter(auth=oauth_data)
+	t_upload = Twitter(domain='upload.twitter.com', auth=oauth_data)
 
-	try:
-		fetch_response = oauth.fetch_request_token(request_token_url)
-	except ValueError:
-		print("There may have been an issue with the consumer_key or consumer_secret you entered.")
-		return -1
+	# 5.3 Save PIL image to disk
+	image.save("image.jpg")
 
-	resource_owner_key = fetch_response.get("oauth_token")
-	resource_owner_secret = fetch_response.get("oauth_token_secret")
-	print(f"Got OAuth token: {resource_owner_key}")
+	# 5.4 Upload saved binary to twitter
+	with open("image.jpg", "rb") as fp:
+		# Get the return value
+		ret = t_upload.media.upload(media=fp.read())
 
-	# Get authorization
-	base_authorization_url = "https://api.twitter.com/oauth/authorize"
-	authorization_url = oauth.authorization_url(base_authorization_url)
-	print("Please go here and authorize: %s" % authorization_url)
-	verifier = input("Paste the PIN here: ")
+	# 5.5 Attach the media id to tweet the image
+	media_id = ret.get("media_id_string")
+	t_tweet.statuses.update(media_ids=media_id)
 
-	# Get the access token
-	access_token_url = "https://api.twitter.com/oauth/access_token"
-	oauth = OAuth1Session(
-		consumer_key,
-		client_secret=consumer_secret,
-		resource_owner_key=resource_owner_key,
-		resource_owner_secret=resource_owner_secret,
-		verifier=verifier,
-	)
-	oauth_tokens = oauth.fetch_access_token(access_token_url)
+	# 5.6 Delete temporary image on disk
+	os.remove("image.jpg")
 
-	access_token = oauth_tokens["oauth_token"]
-	access_token_secret = oauth_tokens["oauth_token_secret"]
-
-	# Make the request
-	oauth = OAuth1Session(
-		consumer_key,
-		client_secret=consumer_secret,
-		resource_owner_key=access_token,
-		resource_owner_secret=access_token_secret,
-	)
-
-	# Making the request
-	response = oauth.post(
-		"https://api.twitter.com/2/tweets",
-		json=payload,
-	)
-
-	if response.status_code != 201:
-		raise Exception(
-			"Request returned an error: {} {}".format(response.status_code, response.text)
-		)
-
-	print("Response code: {}".format(response.status_code))
-
-	# Saving the response as JSON
-	json_response = response.json()
-	print(json.dumps(json_response, indent=4, sort_keys=True))
-
-	image.show()
 	return
 
 
