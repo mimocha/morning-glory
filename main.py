@@ -58,6 +58,17 @@ def get_api():
 
 
 def get_date_info() -> dict:
+	"""
+	Function to generate date info for blessing images.
+	Firstly, get day of week.
+	Second, check if this is holyday. -> Can be done with lunar calendar or Lookup table
+	Third, check if it is a special holiday.
+	To be decided if a single image is generated with multiple blessings, 
+	or multiple images will be generated.
+
+	Returns:
+		dict: Dict containing the date infos
+	"""
 
 	date_info = {
 		"dow" : -1, # ISO-style day of week: Monday==1, Sunday==7
@@ -79,8 +90,20 @@ def get_date_info() -> dict:
 
 
 def generate_greetings(date_info: dict) -> list():
+	"""
+	Function to generate the greetings, separated into two parts.
+	The first is the intro-greetings. -> Hello, today is the day...
+	The second is a randomly chosen blessing.
+
+	Args:
+		date_info (dict): Requires the date info for the intro-greetings
+
+	Returns:
+		list: List of two strings in the format: [Greeting, Blessing]
+	"""
+
 	# 2.1 Generate based on day of week
-	text_greet = d.greetings + d.dow_th.get(date_info["dow"], "วันนี้")
+	text_greet = d.greetings + d.dow_th[date_info["dow"]]
 	text_bless = d.blessings
 	output = [text_greet, text_bless]
 
@@ -89,6 +112,17 @@ def generate_greetings(date_info: dict) -> list():
 
 
 def get_stock_image(date_info: dict) -> Image:
+	"""
+	Function to get stock image from Pexel.
+	Randomly pick based on color of the day.
+
+	Args:
+		date_info (dict): Requires the day of week for color theme
+
+	Returns:
+		Image: Stock image for compositing.
+	"""
+
 	# 3.1 Flowers / Nature / Buddhist images
 	# 3.2 Image color based on day of week
 	images_dir = os.path.join(IMAGES_DIR, str(date_info["dow"]))
@@ -110,7 +144,19 @@ def get_stock_image(date_info: dict) -> Image:
 	return image
 
 
-def compose_image(date_info: dict, greetings: list, image: Image):
+def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
+	"""
+	Function to combine base image and blessings into the output image.
+	Requires libraqm for the correct layout (unix only?).
+
+	Args:
+		date_info (dict): Date info for color of the day.
+		greetings (list): List of two strings, blessing and greeting.
+		image (Image): Stock image for compositing.
+
+	Returns:
+		Image: Composited image
+	"""
 
 	# 4.1 Create transparent text layer to draw on
 	text_layer = Image.new("RGBA", image.size, (255,255,255,0))
@@ -120,7 +166,7 @@ def compose_image(date_info: dict, greetings: list, image: Image):
 	# 4.2 Select random font / text styling 
 	font_list = [f.path for f in os.scandir(FONTS_DIR)]
 	font_path = random.choice(font_list)
-	font = ImageFont.truetype(font_path, size=70, encoding="unic")
+	font = ImageFont.truetype(font_path, size=80, encoding="unic", layout_engine=ImageFont.LAYOUT_RAQM)
 
 	x, y = image.size
 	text_style = {
@@ -143,13 +189,13 @@ def compose_image(date_info: dict, greetings: list, image: Image):
 			text,
 			font = font,
 			fill = fill, 
-			stroke_fill = (0,0,0,128),
-			stroke_width = 3,
+			stroke_fill = (0,0,0,255),
+			stroke_width = 4,
 			anchor = an
 		)
 
 	# 4.4 Watermark image
-	font = ImageFont.truetype(font_path, size=18, encoding="unic")
+	font = ImageFont.truetype(font_path, size=18, encoding="unic", layout_engine=ImageFont.LAYOUT_RAQM)
 	# Get bottom-right coordinates for watermark
 	xy = [c-20 for c in image.size]
 	draw.text(
@@ -166,23 +212,40 @@ def compose_image(date_info: dict, greetings: list, image: Image):
 	return combined
 
 
-def post_result(api: tweepy.API, image: Image, date_info: dict):
+def generate_tweet(date_info: dict, attrib: str) -> str:
+	# 5. Generate tweet text
+	# 5.1 Add hashtag
+	# 5.2 Add image attribution
+	tweet = f"#สวัสดี{d.dow_th[date_info['dow']]}"
+	return tweet
 
-	# 5.1 Save PIL image to disk
+
+def post_result(api: tweepy.API, image: Image, tweet_text: str):
+	"""
+	Function to post results to twitter, using the tweepy library.
+	Use tweepy library for best support, afaik.
+
+
+	Args:
+		api (tweepy.API): Tweepy library API
+		image (Image): Composited image
+	"""
+
+	# 6.1 Save PIL image to disk
 	image.save(TEMP_IMG)
 
-	# 5.2 Upload saved binary to twitter
+	# 6.2 Upload saved binary to twitter
 	data = api.media_upload(TEMP_IMG)
 
-	# 5.3 Attach the media id to tweet the image
+	# 6.3 Attach the media id to tweet the image
 	# Media ID is attached as a list of string ["12345...", ...]
 	# One media_id_string per image.
 	api.update_status(
 		media_ids = [data.media_id_string], 
-		status = "#สวัสดี" + d.dow_th[date_info["dow"]]
+		status = tweet_text
 	)
 
-	# 5.4 Delete temporary image on disk
+	# 6.4 Delete temporary image on disk
 	os.remove(TEMP_IMG)
 
 	return
@@ -209,8 +272,11 @@ if __name__ == "__main__":
 	# 4. Generate blessing image
 	output_image = compose_image(date_info, greetings, stock_image)
 
-	# 5. Post to Twitter
-	post_result(api, output_image, date_info)
+	# 5. Generate tweet text
+	tweet_text = generate_tweet(date_info, "")
+
+	# 6. Post to Twitter
+	post_result(api, output_image, tweet_text)
 
 	# Auto-shutdown VM on success
 	exit()
