@@ -14,7 +14,50 @@ IMAGES_DIR = "./images/"
 CREDENTIALS = "credentials.json"
 
 
+def get_api():
+	"""
+	Function to setup Twitter API v1.1
+	Using v1.1 instead of v2 because media upload requires v1.1 anyway.
+
+	Returns:
+		bool: Success flag
+		tweepy.API: The Twitter API object
+	"""
+
+	# https://docs.tweepy.org/en/stable/auth_tutorial.html
+	# 1.1 Read credentials from system
+	with open(CREDENTIALS, "r") as fp:
+		auth = json.load(fp)
+		# Aliases for different tokens:
+		# https://developer.twitter.com/en/docs/authentication/oauth-1-0a/obtaining-user-access-tokens
+		access_token = auth.get("Access Token")
+		access_token_secret = auth.get("Access Token Secret")
+		consumer_key = auth.get("API Key")
+		consumer_secret = auth.get("API Key Secret")
+
+	# # 1.2 Setup Twitter APIv1.1
+	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+	auth.set_access_token(access_token, access_token_secret)
+	api = tweepy.API(auth)
+
+	# 1.3 Verify authorization
+	try:
+		api.lookup_users(screen_name=["MorningGloryBot"])
+		ret = True
+	except tweepy.errors.Unauthorized as e:
+		# Authorization errors
+		print(e)
+		ret = False
+	except Exception as e:
+		# Any other unexpected error
+		print(e)
+		ret = False
+
+	return ret, api
+
+
 def get_date_info() -> dict:
+
 	date_info = {
 		"dow" : -1, # ISO-style day of week: Monday==1, Sunday==7
 		"holy": False, # วันพระ
@@ -60,74 +103,82 @@ def get_stock_image(date_info: dict) -> Image:
 	lurl = (c[0]-half, c[1]-half, c[0]+half, c[1]+half) # Left, Upper, Right, Lower
 	image = image.crop(box=lurl)
 
+	# 3.4 Convert to RGBA for watermarking
+	image = image.convert("RGBA")
+
 	return image
 
 
 def compose_image(date_info: dict, greetings: list, image: Image):
-	# 4.1 Select random font / text styling 
-	# 4.1.1 Select random font
+
+	# 4.1 Create transparent text layer to draw on
+	text_layer = Image.new("RGBA", image.size, (255,255,255,0))
+	# Draw object
+	draw = ImageDraw.Draw(text_layer)
+
+	# 4.2 Select random font / text styling 
 	font_list = [f.path for f in os.scandir(FONTS_DIR)]
 	font_path = random.choice(font_list)
-	font = ImageFont.truetype(font_path, size=72, encoding="unic")
+	font = ImageFont.truetype(font_path, size=70, encoding="unic")
 
-	# 4.2 Place text on image
-	draw = ImageDraw.Draw(image)
+	x, y = image.size
+	text_style = {
+		"center": {
+			"coords" : [(0.5*x, 0.1*y), (0.5*x, 0.7*y)],
+			"anchor" : ["mt", "mt"]
+		},
+		"slant": {
+			"coords" : [(0.05*x, 0.05*y), (0.95*x, 0.9*y)],
+			"anchor" : ["lt", "rb"]
+		}
+	}
+	_name, style = random.choice(list(text_style.items()))
+
+	# 4.3 Place text on image
 	fill = d.text_fill[date_info["dow"]] # Color by day of week
-	stroke_fill = (255, 255, 255)
-	coords = [(100, 100), (100, 200)]
-	for text, xy in zip(greetings, coords):
+	for text, xy, an in zip(greetings, style["coords"], style["anchor"]):
 		draw.text(
-			xy, text, 
-			font=font, 
-			fill=fill, 
-			stroke_fill=stroke_fill,
-			stroke_width=3
+			xy,
+			text,
+			font = font,
+			fill = fill, 
+			stroke_fill = (0,0,0,128),
+			stroke_width = 3,
+			anchor = an
 		)
 
-	# 4.3 Watermark image
-	font = ImageFont.truetype(font_path, size=24, encoding="unic")
-	xy = image.size
-	xy = [c-20 for c in xy]
+	# 4.4 Watermark image
+	font = ImageFont.truetype(font_path, size=18, encoding="unic")
+	# Get bottom-right coordinates for watermark
+	xy = [c-20 for c in image.size]
 	draw.text(
 		xy, 
 		"@MorningGloryBot", 
-		font=font,
-		fill=(255, 255, 255),
-		anchor="rb"
+		font = font,
+		fill = (255,255,255,128),
+		anchor = "rb"
 	)
 
-	return image
+	# Combine layers
+	combined = Image.alpha_composite(image, text_layer)
+
+	return combined
 
 
-def post_result(image: Image):
-	# 5.1 Read credentials and setup OAuth
-	with open(CREDENTIALS, "r") as fp:
-		auth = json.load(fp)
-		# Aliases for different tokens:
-		# https://developer.twitter.com/en/docs/authentication/oauth-1-0a/obtaining-user-access-tokens
-		access_token = auth.get("Access Token")
-		access_token_secret = auth.get("Access Token Secret")
-		consumer_key = auth.get("API Key")
-		consumer_secret = auth.get("API Key Secret")
+def post_result(api: tweepy.API, image: Image):
 
-		auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-		auth.set_access_token(access_token, access_token_secret)
-
-	# 5.2 Setup Twitter APIs
-	api = tweepy.API(auth)
-
-	# 5.3 Save PIL image to disk
+	# 5.1 Save PIL image to disk
 	image.save("image.jpg")
 
-	# 5.4 Upload saved binary to twitter
+	# 5.2 Upload saved binary to twitter
 	data = api.media_upload("image.jpg")
 
-	# 5.5 Attach the media id to tweet the image
+	# 5.3 Attach the media id to tweet the image
 	# Media ID is attached as a list of string ["12345...", ...]
 	# One media_id_string per image.
 	api.update_status(media_ids=[data.media_id_string], status="")
 
-	# 5.6 Delete temporary image on disk
+	# 5.4 Delete temporary image on disk
 	os.remove("image.jpg")
 
 	return
@@ -136,7 +187,13 @@ def post_result(image: Image):
 if __name__ == "__main__":
 	# Run this script on VM startup
 
-	# 1. Get date info
+	# 1. Setup Twitter API
+	ret, api = get_api()
+	if not ret:
+		print("Authentication Failed")
+		exit()
+
+	# 2. Get date info
 	date_info = get_date_info()
 
 	# 2. Generate random blessing
@@ -149,7 +206,7 @@ if __name__ == "__main__":
 	output_image = compose_image(date_info, greetings, stock_image)
 
 	# 5. Post to Twitter
-	ret = post_result(output_image)
+	post_result(api, output_image)
 
 	# Auto-shutdown VM on success
 	exit()

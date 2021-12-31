@@ -48,12 +48,6 @@ __bless_object = [
 blessings = random.choice(__bless_verb) + random.choice(__bless_object)
 
 
-text_positions = random.choice([
-	"tl",
-	"mid"
-])
-
-
 text_fill = {
 	1: (247, 225, 27), # Mon
 	2: (242, 160, 236), # Tue
