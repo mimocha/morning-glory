@@ -216,7 +216,7 @@ def generate_tweet(date_info: dict, attrib: str) -> str:
 	# 5. Generate tweet text
 	# 5.1 Add hashtag
 	# 5.2 Add image attribution
-	tweet = f"#สวัสดี{d.dow_th[date_info['dow']]}"
+	tweet = f"#สวัสดี{d.dow_th[date_info['dow']]}\n\n{attrib}"
 	return tweet
 
 
@@ -224,7 +224,6 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 	"""
 	Function to post results to twitter, using the tweepy library.
 	Use tweepy library for best support, afaik.
-
 
 	Args:
 		api (tweepy.API): Tweepy library API
@@ -273,7 +272,7 @@ if __name__ == "__main__":
 	output_image = compose_image(date_info, greetings, stock_image)
 
 	# 5. Generate tweet text
-	tweet_text = generate_tweet(date_info, "")
+	tweet_text = generate_tweet(date_info, "Photos provided by www.Pexels.com")
 
 	# 6. Post to Twitter
 	post_result(api, output_image, tweet_text)
