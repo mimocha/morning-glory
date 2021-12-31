@@ -12,6 +12,7 @@ FONTS_DIR = "./fonts/"
 IMAGES_DIR = "./images/"
 
 CREDENTIALS = "credentials.json"
+TEMP_IMG = "image.png"
 
 
 def get_api():
@@ -165,21 +166,24 @@ def compose_image(date_info: dict, greetings: list, image: Image):
 	return combined
 
 
-def post_result(api: tweepy.API, image: Image):
+def post_result(api: tweepy.API, image: Image, date_info: dict):
 
 	# 5.1 Save PIL image to disk
-	image.save("image.jpg")
+	image.save(TEMP_IMG)
 
 	# 5.2 Upload saved binary to twitter
-	data = api.media_upload("image.jpg")
+	data = api.media_upload(TEMP_IMG)
 
 	# 5.3 Attach the media id to tweet the image
 	# Media ID is attached as a list of string ["12345...", ...]
 	# One media_id_string per image.
-	api.update_status(media_ids=[data.media_id_string], status="")
+	api.update_status(
+		media_ids = [data.media_id_string], 
+		status = "#สวัสดี" + d.dow_th[date_info["dow"]]
+	)
 
 	# 5.4 Delete temporary image on disk
-	os.remove("image.jpg")
+	os.remove(TEMP_IMG)
 
 	return
 
@@ -206,7 +210,7 @@ if __name__ == "__main__":
 	output_image = compose_image(date_info, greetings, stock_image)
 
 	# 5. Post to Twitter
-	post_result(api, output_image)
+	post_result(api, output_image, date_info)
 
 	# Auto-shutdown VM on success
 	exit()
