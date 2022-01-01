@@ -147,7 +147,7 @@ def get_stock_image(date_info: dict) -> Image:
 def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	"""
 	Function to combine base image and blessings into the output image.
-	Requires libraqm for the correct layout (unix only?).
+	Requires libraqm for the correct layout (unix only).
 
 	Args:
 		date_info (dict): Date info for color of the day.
@@ -163,27 +163,48 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	# Draw object
 	draw = ImageDraw.Draw(text_layer)
 
-	# 4.2 Select random font / text styling 
+	# 4.2 Select random font
 	font_list = [f.path for f in os.scandir(FONTS_DIR)]
 	font_path = random.choice(font_list)
-	font = ImageFont.truetype(font_path, size=80, encoding="unic", layout_engine=ImageFont.LAYOUT_RAQM)
+	font_size = 80
+	font = ImageFont.truetype(font_path, size=font_size, encoding="unic", layout_engine=ImageFont.LAYOUT_RAQM)
 
+	# 4.3 Select text styling / positioning
 	x, y = image.size
+	# Dict must be defined here due to the relative positioning used
 	text_style = {
 		"center": {
 			"coords" : [(0.5*x, 0.1*y), (0.5*x, 0.7*y)],
-			"anchor" : ["mt", "mt"]
+			"anchor" : ["mt", "mt"],
+			"align" : ["center", "center"]
 		},
 		"slant": {
 			"coords" : [(0.05*x, 0.05*y), (0.95*x, 0.9*y)],
-			"anchor" : ["lt", "rb"]
+			"anchor" : ["lt", "rb"],
+			"align" : ["left", "right"]
 		}
 	}
 	_name, style = random.choice(list(text_style.items()))
 
-	# 4.3 Place text on image
+	# 4.4 Decrease font size until text fits
+	font_size_fit = False
+	while not font_size_fit:
+		tests = list()
+		for text, xy, an, al in zip(greetings, style["coords"], style["anchor"], style["align"]):
+			# Generate text bbox
+			bbox = draw.textbbox(xy, text, font=font, anchor=an, align=al)
+			# Check if text bbox is in-bound
+			# Checks: (Lower bound) and (Upper bound)
+			tests.append( (bbox[:2] >= (0,0)) and (bbox[2:] <= image.size) )
+		# Must fit all text
+		font_size_fit = all(tests)
+		if not font_size_fit:
+			font_size -= 2
+			font = ImageFont.truetype(font_path, size=font_size, layout_engine=ImageFont.LAYOUT_RAQM)
+
+	# 4.5 Place text on image
 	fill = d.text_fill[date_info["dow"]] # Color by day of week
-	for text, xy, an in zip(greetings, style["coords"], style["anchor"]):
+	for text, xy, an, al in zip(greetings, style["coords"], style["anchor"], style["align"]):
 		draw.text(
 			xy,
 			text,
@@ -191,18 +212,22 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 			fill = fill, 
 			stroke_fill = (0,0,0,255),
 			stroke_width = 4,
-			anchor = an
+			anchor = an,
+			align = al
 		)
 
-	# 4.4 Watermark image
-	font = ImageFont.truetype(font_path, size=18, encoding="unic", layout_engine=ImageFont.LAYOUT_RAQM)
+	# 4.6 Watermark image
 	# Get bottom-right coordinates for watermark
 	xy = [c-20 for c in image.size]
+	text = "@MorningGloryBot"
+	font = ImageFont.truetype(font_path, size=24)
 	draw.text(
 		xy, 
-		"@MorningGloryBot", 
+		text, 
 		font = font,
 		fill = (255,255,255,128),
+		stroke_fill = (0,0,0,128),
+		stroke_width = 2,
 		anchor = "rb"
 	)
 
