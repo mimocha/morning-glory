@@ -11,6 +11,29 @@ dow_th = {
 }
 
 
+__color_otd = {
+	1: "yellow",
+	2: "pink",
+	3: "green",
+	4: "orange",
+	5: "blue",
+	6: "violet",
+	7: "red",
+}
+get_color = lambda x: __color_otd[x]
+
+
+__objects = [
+	"flower",
+	"landscape",
+	"food",
+	"architecture",
+	"sports",
+	"festival"
+]
+get_obj = lambda: random.choice(__objects)
+
+
 __greet_a =	[
 	"สวัสดี",
 	"อรุณสวัสดิ์",
@@ -22,11 +45,13 @@ __greet_b = [
 	" วันนี้",
 	"ยามเช้า "
 ]
-greetings = random.choice(__greet_a) + random.choice(__greet_b)
+greetings = lambda: random.choice(__greet_a) + random.choice(__greet_b)
 
 
 __bless_verb = [
-	"ขอให้"
+	"ขอให้",
+	"อวยพรให้",
+	"ขอให้ท่าน"
 ]
 __bless_object = [
 	"วันนี้เป็นวันที่ดี",
@@ -47,7 +72,7 @@ __bless_object = [
 	"สุขภาพแข็งแรง",
 	"ปลอดโรคภัย",
 ]
-blessings = random.choice(__bless_verb) + random.choice(__bless_object)
+blessings = lambda: random.choice(__bless_verb) + random.choice(__bless_object)
 
 
 text_fill = {

@@ -3,13 +3,14 @@ import json
 import os
 import random; random.seed()
 
+from io import BytesIO
 from PIL import Image, ImageFont, ImageDraw
+import requests
 import tweepy
 
 import dictionary as d
 
 FONTS_DIR = "./fonts/"
-IMAGES_DIR = "./images/"
 
 CREDENTIALS = "credentials.json"
 TEMP_IMG = "image.png"
@@ -23,6 +24,7 @@ def get_api():
 	Returns:
 		bool: Success flag
 		tweepy.API: The Twitter API object
+		str: The pexel API key
 	"""
 
 	# https://docs.tweepy.org/en/stable/auth_tutorial.html
@@ -35,6 +37,7 @@ def get_api():
 		access_token_secret = auth.get("Access Token Secret")
 		consumer_key = auth.get("API Key")
 		consumer_secret = auth.get("API Key Secret")
+		pexel_key = auth.get("Pexel API Key")
 
 	# # 1.2 Setup Twitter APIv1.1
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
@@ -54,7 +57,7 @@ def get_api():
 		print(e)
 		ret = False
 
-	return ret, api
+	return ret, api, pexel_key
 
 
 def get_date_info() -> dict:
@@ -103,15 +106,15 @@ def generate_greetings(date_info: dict) -> list():
 	"""
 
 	# 2.1 Generate based on day of week
-	text_greet = d.greetings + d.dow_th[date_info["dow"]]
-	text_bless = d.blessings
+	text_greet = d.greetings() + d.dow_th[date_info["dow"]]
+	text_bless = d.blessings()
 	output = [text_greet, text_bless]
 
 	# 2.2 Generate based on holidays
 	return output
 
 
-def get_stock_image(date_info: dict) -> Image:
+def get_stock_image(date_info: dict, pexel_key: str) -> Image:
 	"""
 	Function to get stock image from Pexel.
 	Randomly pick based on color of the day.
@@ -123,22 +126,35 @@ def get_stock_image(date_info: dict) -> Image:
 		Image: Stock image for compositing.
 	"""
 
-	# 3.1 Flowers / Nature / Buddhist images
-	# 3.2 Image color based on day of week
-	images_dir = os.path.join(IMAGES_DIR, str(date_info["dow"]))
-	image_list = [f.path for f in os.scandir(images_dir)]
-	image_path = random.choice(image_list)
-	image = Image.open(image_path)
+	# 3.1 Generate image query for day of the week
+	query = "query={}".format(d.get_obj())
+	color = "color={}".format(d.get_color(date_info["dow"]))
+	page = "page={}".format(random.randint(1,500)) # Randomly select from 500 images
+	per_page = "per_page=1"
+	url = f"https://api.pexels.com/v1/search?{query}&{color}&{page}&{per_page}"
 
-	# 3.3 Center crop to square image
-	xy = image.size # Original Image Dimension
-	dim = min(min(xy), 800) # Cropped Dimension, cap to 800
-	half = round(dim/2) # Half of New Dimension
-	c = [round(c/2) for c in xy] # Center Coordinate XY
-	lurl = (c[0]-half, c[1]-half, c[0]+half, c[1]+half) # Left, Upper, Right, Lower
-	image = image.crop(box=lurl)
+	# 3.2 Query Pexel for image
+	# 3.2.1 Get request for a random image
+	r = requests.get(url=url, headers={"Authorization":pexel_key})
+	if r.status_code != 200:
+		print (f"Warning! Status code {r.status_code} on search request!")
 
-	# 3.4 Convert to RGBA for watermarking
+	# 3.2.2 Extract image URL from response
+	metadata = r.json()
+	original_url = metadata["photos"][0]["src"]["original"]
+
+	# 3.2.3 Use Pexel APIs to crop image for us
+	query_url = f"{original_url}?auto=compress&cs=tinysrgb&fit=crop&h=800&w=800"
+
+	# 3.2.4 Request for the image data, no Auth needed
+	r = requests.get(query_url)
+	if r.status_code != 200:
+		print (f"Warning! Status code {r.status_code} on image request!")
+	# Convert response binary data into PIL image
+	# https://docs.python-requests.org/en/latest/user/quickstart/#binary-response-content
+	image = Image.open(BytesIO(r.content))
+
+	# 3.3 Convert to RGBA for watermarking
 	image = image.convert("RGBA")
 
 	return image
@@ -276,12 +292,10 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 
 
 if __name__ == "__main__":
-	# Run this script on VM startup
-
 	# 1. Setup Twitter API
-	ret, api = get_api()
+	ret, api, pexel_key = get_api()
 	if not ret:
-		print("Authentication Failed")
+		print("Error: Twitter Authentication Failed")
 		exit()
 
 	# 2. Get date info
@@ -291,7 +305,7 @@ if __name__ == "__main__":
 	greetings = generate_greetings(date_info)
 
 	# 3. Get random stock image
-	stock_image = get_stock_image(date_info)
+	stock_image = get_stock_image(date_info, pexel_key)
 
 	# 4. Generate blessing image
 	output_image = compose_image(date_info, greetings, stock_image)
@@ -302,5 +316,4 @@ if __name__ == "__main__":
 	# 6. Post to Twitter
 	post_result(api, output_image, tweet_text)
 
-	# Auto-shutdown VM on success
 	exit()
