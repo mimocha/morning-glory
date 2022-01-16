@@ -1,5 +1,5 @@
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, BufferedReader
 import json
 import os
 import random; random.seed()
@@ -13,7 +13,6 @@ import dictionary as d
 FONTS_DIR = "./fonts/"
 
 CREDENTIALS = "credentials.json"
-TEMP_IMG = "image.png"
 
 
 def get_api():
@@ -278,23 +277,24 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 		image (Image): Composited image
 	"""
 
-	# 6.1 Save PIL image to disk
-	image.save(TEMP_IMG)
+	# 6.1 Save PIL image in-memory for upload. See sample by tweepy dev:
+	# https://github.com/tweepy/tweepy/issues/1412
+	b = BytesIO() # Create Python BytesIO
+	image.save(b, "PNG") # Save PIL image in-memory
+	b.seek(0)
+	fp = BufferedReader(b)
 
 	# 6.2 Upload saved binary to twitter
 	# Will fail if not authorized to post (Twitter app not set up properly?)
-	data = api.media_upload(TEMP_IMG)
+	data = api.media_upload('image.png', file=fp)
 
 	# 6.3 Attach the media id to tweet the image
 	# Media ID is attached as a list of string ["12345...", ...]
 	# One media_id_string per image.
 	api.update_status(
-		media_ids = [data.media_id_string], 
+		media_ids = [data.media_id_string],
 		status = tweet_text
 	)
-
-	# 6.4 Delete temporary image on disk
-	os.remove(TEMP_IMG)
 
 	return
 
