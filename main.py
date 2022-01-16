@@ -1,9 +1,9 @@
 from datetime import datetime
+from io import BytesIO
 import json
 import os
 import random; random.seed()
 
-from io import BytesIO
 from PIL import Image, ImageFont, ImageDraw
 import requests
 import tweepy
@@ -22,7 +22,6 @@ def get_api():
 	Using v1.1 instead of v2 because media upload requires v1.1 anyway.
 
 	Returns:
-		bool: Success flag
 		tweepy.API: The Twitter API object
 		str: The pexel API key
 	"""
@@ -45,19 +44,11 @@ def get_api():
 	api = tweepy.API(auth)
 
 	# 1.3 Verify authorization
-	try:
-		api.lookup_users(screen_name=["MorningGloryBot"])
-		ret = True
-	except tweepy.errors.Unauthorized as e:
-		# Authorization errors
-		print(e)
-		ret = False
-	except Exception as e:
-		# Any other unexpected error
-		print(e)
-		ret = False
+	# Will fail for incorrect access tokens or consumer key/secrets
+	# Does not test posting permissions
+	api.lookup_users(screen_name=["MorningGloryBot"])
 
-	return ret, api, pexel_key
+	return api, pexel_key
 
 
 def get_date_info() -> dict:
@@ -114,16 +105,18 @@ def generate_greetings(date_info: dict) -> list():
 	return output
 
 
-def get_stock_image(date_info: dict, pexel_key: str) -> Image:
+def get_stock_image(date_info: dict, pexel_key: str):
 	"""
 	Function to get stock image from Pexel.
 	Randomly pick based on color of the day.
 
 	Args:
 		date_info (dict): Requires the day of week for color theme
+		pexel_key (str): Pexel API Key for making request to Pexel
 
 	Returns:
-		Image: Stock image for compositing.
+		Image: Stock image for compositing
+		dict: Metadata of image, for tweet crediting
 	"""
 
 	# 3.1 Generate image query for day of the week
@@ -139,9 +132,10 @@ def get_stock_image(date_info: dict, pexel_key: str) -> Image:
 	if r.status_code != 200:
 		print (f"Warning! Status code {r.status_code} on search request!")
 
-	# 3.2.2 Extract image URL from response
-	metadata = r.json()
-	original_url = metadata["photos"][0]["src"]["original"]
+	# 3.2.2 Extract image URL & metadata from response
+	response = r.json()
+	metadata = response["photos"][0]
+	original_url = metadata["src"]["original"]
 
 	# 3.2.3 Use Pexel APIs to crop image for us
 	query_url = f"{original_url}?auto=compress&cs=tinysrgb&fit=crop&h=800&w=800"
@@ -157,7 +151,7 @@ def get_stock_image(date_info: dict, pexel_key: str) -> Image:
 	# 3.3 Convert to RGBA for watermarking
 	image = image.convert("RGBA")
 
-	return image
+	return image, metadata
 
 
 def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
@@ -253,11 +247,24 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	return combined
 
 
-def generate_tweet(date_info: dict, attrib: str) -> str:
+def generate_tweet(date_info: dict, metadata: dict) -> str:
+	"""
+	Function to generate the tweet text itself.
+	Includes the greetings hashtag for finding on twitter.
+	Then add the photographer and Pexel attribution.
+
+	Args:
+		date_info (dict): Day of the week for Thai Hashtag
+		metadata (dict): Image author for attribution
+
+	Returns:
+		str: Tweet string
+	"""
+
 	# 5. Generate tweet text
-	# 5.1 Add hashtag
-	# 5.2 Add image attribution
-	tweet = f"#สวัสดี{d.dow_th[date_info['dow']]}\n\n{attrib}"
+	hashtag = f"#สวัสดี{d.dow_th[date_info['dow']]}"
+	attribute = f"Photo by {metadata['photographer']} | Pexels.com"
+	tweet = f"{hashtag}\n{attribute}"
 	return tweet
 
 
@@ -275,6 +282,7 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 	image.save(TEMP_IMG)
 
 	# 6.2 Upload saved binary to twitter
+	# Will fail if not authorized to post (Twitter app not set up properly?)
 	data = api.media_upload(TEMP_IMG)
 
 	# 6.3 Attach the media id to tweet the image
@@ -293,10 +301,7 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 
 if __name__ == "__main__":
 	# 1. Setup Twitter API
-	ret, api, pexel_key = get_api()
-	if not ret:
-		print("Error: Twitter Authentication Failed")
-		exit()
+	api, pexel_key = get_api()
 
 	# 2. Get date info
 	date_info = get_date_info()
@@ -305,13 +310,13 @@ if __name__ == "__main__":
 	greetings = generate_greetings(date_info)
 
 	# 3. Get random stock image
-	stock_image = get_stock_image(date_info, pexel_key)
+	image, metadata = get_stock_image(date_info, pexel_key)
 
 	# 4. Generate blessing image
-	output_image = compose_image(date_info, greetings, stock_image)
+	output_image = compose_image(date_info, greetings, image)
 
 	# 5. Generate tweet text
-	tweet_text = generate_tweet(date_info, "Photos provided by www.Pexels.com")
+	tweet_text = generate_tweet(date_info, metadata)
 
 	# 6. Post to Twitter
 	post_result(api, output_image, tweet_text)
