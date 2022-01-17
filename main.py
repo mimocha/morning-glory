@@ -1,5 +1,5 @@
 from datetime import datetime
-from io import BytesIO, BufferedReader
+from io import BytesIO
 import json
 import os
 import random; random.seed()
@@ -264,6 +264,7 @@ def generate_tweet(date_info: dict, metadata: dict) -> str:
 	hashtag = f"#สวัสดี{d.dow_th[date_info['dow']]}"
 	attribute = f"Photo by {metadata['photographer']} | Pexels.com"
 	tweet = f"{hashtag}\n{attribute}"
+
 	return tweet
 
 
@@ -282,11 +283,10 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 	b = BytesIO() # Create Python BytesIO
 	image.save(b, "PNG") # Save PIL image in-memory
 	b.seek(0)
-	fp = BufferedReader(b)
 
 	# 6.2 Upload saved binary to twitter
 	# Will fail if not authorized to post (Twitter app not set up properly?)
-	data = api.media_upload('image.png', file=fp)
+	data = api.simple_upload(filename='', file=b)
 
 	# 6.3 Attach the media id to tweet the image
 	# Media ID is attached as a list of string ["12345...", ...]
