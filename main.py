@@ -3,6 +3,7 @@ from io import BytesIO
 import json
 import os
 import random; random.seed()
+import urllib.parse
 
 from PIL import Image, ImageFont, ImageDraw
 import requests
@@ -151,6 +152,36 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	image = image.convert("RGBA")
 
 	return image, metadata
+
+
+def get_font(greetings: list):
+
+	# https://developers.google.com/fonts/docs/getting_started
+	# https://developers.google.com/fonts/docs/css2#individual_styles_such_as_weight
+	# https://pillow.readthedocs.io/en/stable/reference/ImageFont.html
+
+	# Reduce full query text into minimum set of characters for Google fonts API query
+	query_text = "".join(greetings)
+	query_char = "".join(set(query_text))
+	# Encode text into web format
+	web_text = urllib.parse.quote(query_char)
+
+	base_url = "https://fonts.googleapis.com/css2?"
+	family = f"family={d.font()}"
+	text = f"&text={web_text}"
+	query_url = f"{base_url}{family}{text}"
+
+	# Query Google Fonts API for font file URL
+	r = requests.get(query_url)
+	# Extract with Regex TODO
+	font_url = r.json()
+
+	# Query for actual font binary
+	r = requests.get(font_url)
+	# Read into memory TODO How?
+	BytesIO(r.content)
+
+	return
 
 
 def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
@@ -311,6 +342,9 @@ if __name__ == "__main__":
 
 	# 3. Get random stock image
 	image, metadata = get_stock_image(date_info, pexel_key)
+
+	# Get random font
+	font = get_font(greetings)
 
 	# 4. Generate blessing image
 	output_image = compose_image(date_info, greetings, image)

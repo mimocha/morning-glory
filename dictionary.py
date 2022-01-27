@@ -75,6 +75,16 @@ __bless_object = [
 blessings = lambda: random.choice(__bless_verb) + random.choice(__bless_object)
 
 
+__fonts_list = [
+	"Chakra+Petch",
+	"Charm",
+	"Charmonman",
+	"Itim",
+	"Krub",
+]
+font = lambda: random.choice(__fonts_list)
+
+
 text_fill = {
 	1: (247, 225, 27), # Mon
 	2: (242, 160, 236), # Tue
