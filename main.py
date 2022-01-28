@@ -1,6 +1,7 @@
 from datetime import datetime
 from io import BytesIO
-import json
+import logging
+import os
 import random; random.seed()
 import re
 import urllib.parse
@@ -11,31 +12,29 @@ import tweepy
 
 import dictionary as d
 
-CREDENTIALS = "credentials.json"
-
 
 def get_api():
 	"""
 	Function to setup Twitter API v1.1
 	Using v1.1 instead of v2 because media upload requires v1.1 anyway.
+	
+	Keys & Secrets are stored in Azure Key Vault.
+	Then Azure Function references those secrets via secret identifier.
+	The keys become available as os environment variables.
+	Reference Guide:
+	https://levelup.gitconnected.com/a-secure-way-to-use-credentials-and-secrets-in-azure-functions-7ec91813c807
 
 	Returns:
 		tweepy.API: The Twitter API object
 		str: The pexel API key
 	"""
 
-	# TODO Replace credentials with Azure Key Vault
-	# https://docs.tweepy.org/en/stable/auth_tutorial.html
-	# 1.1 Read credentials from system
-	with open(CREDENTIALS, "r") as fp:
-		auth = json.load(fp)
-		# Aliases for different tokens:
-		# https://developer.twitter.com/en/docs/authentication/oauth-1-0a/obtaining-user-access-tokens
-		access_token = auth.get("Access Token")
-		access_token_secret = auth.get("Access Token Secret")
-		consumer_key = auth.get("API Key")
-		consumer_secret = auth.get("API Key Secret")
-		pexel_key = auth.get("Pexel API Key")
+	# 1.1 Read credentials from system environment
+	consumer_key = os.getenv("DEV_API_KEY")
+	consumer_secret = os.getenv("DEV_API_SECRET")
+	access_token = os.getenv("DEV_ACCESS_TOKEN")
+	access_token_secret = os.getenv("DEV_ACCESS_SECRET")
+	pexel_key = os.getenv("PEXEL_KEY")
 
 	# # 1.2 Setup Twitter APIv1.1
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
@@ -69,6 +68,7 @@ def get_date_info() -> dict:
 	# Monday = 1 ~ Sunday = 7
 	date_info["dow"] = datetime.now().isoweekday()
 
+	# TODO
 	# 1.2 Calculate Thai Lunar Calendar
 	# https://th.wikipedia.org/wiki/%E0%B8%9B%E0%B8%8F%E0%B8%B4%E0%B8%97%E0%B8%B4%E0%B8%99%E0%B8%88%E0%B8%B1%E0%B8%99%E0%B8%97%E0%B8%A3%E0%B8%84%E0%B8%95%E0%B8%B4%E0%B9%84%E0%B8%97%E0%B8%A2
 	# https://en.wikipedia.org/wiki/Thai_lunar_calendar
@@ -124,7 +124,8 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	# 3.2.1 Get request for a random image
 	r = requests.get(url=query_url, headers={"Authorization":pexel_key})
 	if r.status_code != 200:
-		print (f"Warning! Status code {r.status_code} on search request!")
+		logging.warning(f"Status code {r.status_code} on Pexel search request!")
+		logging.warning(r.reason)
 
 	# 3.2.2 Extract image URL & metadata from response
 	response = r.json()
@@ -140,7 +141,8 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	# 3.2.4 Request for the image data, no Auth needed
 	r = requests.get(query_url)
 	if r.status_code != 200:
-		print (f"Warning! Status code {r.status_code} on image request!")
+		logging.warning(f"Status code {r.status_code} on Pexel image download!")
+		logging.warning(r.reason)
 	# Convert response binary data into PIL image
 	# https://docs.python-requests.org/en/latest/user/quickstart/#binary-response-content
 	image = Image.open(BytesIO(r.content))
@@ -179,12 +181,18 @@ def get_font(greetings: list) -> BytesIO:
 
 	# Query Google Fonts API for font file URL
 	r = requests.get(query_url)
+	if r.status_code != 200:
+		logging.warning(f"Status code {r.status_code} on Google Fonts request!")
+		logging.warning(r.reason)
 	# Extract with Regex
 	match = re.search(r"\((https.*?)\)", r.text)
 	font_url = match.groups()[0]
 
 	# Query for actual font binary
 	r = requests.get(font_url)
+	if r.status_code != 200:
+		logging.warning(f"Status code {r.status_code} on Google Fonts download!")
+		logging.warning(r.reason)
 	# Read into memory : fp is a file-like object
 	# This is equivalent to:
 	# fp = open("font.ttf", "rb")
