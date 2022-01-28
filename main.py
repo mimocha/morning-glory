@@ -124,8 +124,8 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	# 3.2.1 Get request for a random image
 	r = requests.get(url=query_url, headers={"Authorization":pexel_key})
 	if r.status_code != 200:
-		logging.warning(f"Status code {r.status_code} on Pexel search request!")
-		logging.warning(r.reason)
+		logging.warning(f"Status code {r.status_code} on Pexel search request! Reason: {r.reason}")
+		logging.warning(f"Pexel search query: {query_url}")
 
 	# 3.2.2 Extract image URL & metadata from response
 	response = r.json()
@@ -141,8 +141,8 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	# 3.2.4 Request for the image data, no Auth needed
 	r = requests.get(query_url)
 	if r.status_code != 200:
-		logging.warning(f"Status code {r.status_code} on Pexel image download!")
-		logging.warning(r.reason)
+		logging.warning(f"Status code {r.status_code} on Pexel image download! Reason: {r.reason}")
+		logging.warning(f"Pexel download query: {query_url}")
 	# Convert response binary data into PIL image
 	# https://docs.python-requests.org/en/latest/user/quickstart/#binary-response-content
 	image = Image.open(BytesIO(r.content))
@@ -182,8 +182,8 @@ def get_font(greetings: list) -> BytesIO:
 	# Query Google Fonts API for font file URL
 	r = requests.get(query_url)
 	if r.status_code != 200:
-		logging.warning(f"Status code {r.status_code} on Google Fonts request!")
-		logging.warning(r.reason)
+		logging.warning(f"Status code {r.status_code} on Google Fonts request! Reason {r.reason}")
+		logging.warning(f"Google Fonts Query URL: {query_url}")
 	# Extract with Regex
 	match = re.search(r"\((https.*?)\)", r.text)
 	font_url = match.groups()[0]
@@ -191,8 +191,8 @@ def get_font(greetings: list) -> BytesIO:
 	# Query for actual font binary
 	r = requests.get(font_url)
 	if r.status_code != 200:
-		logging.warning(f"Status code {r.status_code} on Google Fonts download!")
-		logging.warning(r.reason)
+		logging.warning(f"Status code {r.status_code} on Google Fonts download! Reason: {r.reason}")
+		logging.warning(f"Google Fonts Download URL: {query_url}")
 	# Read into memory : fp is a file-like object
 	# This is equivalent to:
 	# fp = open("font.ttf", "rb")
