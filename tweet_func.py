@@ -30,10 +30,10 @@ def get_api():
 	"""
 
 	# 1.1 Read credentials from system environment
-	consumer_key = os.getenv("DEV_API_KEY")
-	consumer_secret = os.getenv("DEV_API_SECRET")
-	access_token = os.getenv("DEV_ACCESS_TOKEN")
-	access_token_secret = os.getenv("DEV_ACCESS_SECRET")
+	consumer_key = os.getenv("PROD_API_KEY")
+	consumer_secret = os.getenv("PROD_API_SECRET")
+	access_token = os.getenv("PROD_ACCESS_TOKEN")
+	access_token_secret = os.getenv("PROD_ACCESS_SECRET")
 	pexel_key = os.getenv("PEXEL_KEY")
 
 	# # 1.2 Setup Twitter APIv1.1
@@ -368,7 +368,11 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 	return
 
 
-if __name__ == "__main__":
+def run():
+	"""
+	Wrapper function for later invocation
+	"""
+
 	# 1. Setup API & Credentials
 	api, pexel_key = get_api()
 
@@ -389,5 +393,3 @@ if __name__ == "__main__":
 
 	# 6. Post to Twitter
 	post_result(api, output_image, tweet_text)
-
-	exit()
