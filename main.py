@@ -1,8 +1,8 @@
 from datetime import datetime
 from io import BytesIO
 import json
-import os
 import random; random.seed()
+import re
 import urllib.parse
 
 from PIL import Image, ImageFont, ImageDraw
@@ -10,8 +10,6 @@ import requests
 import tweepy
 
 import dictionary as d
-
-FONTS_DIR = "./fonts/"
 
 CREDENTIALS = "credentials.json"
 
@@ -26,6 +24,7 @@ def get_api():
 		str: The pexel API key
 	"""
 
+	# TODO Replace credentials with Azure Key Vault
 	# https://docs.tweepy.org/en/stable/auth_tutorial.html
 	# 1.1 Read credentials from system
 	with open(CREDENTIALS, "r") as fp:
@@ -42,11 +41,6 @@ def get_api():
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
 	auth.set_access_token(access_token, access_token_secret)
 	api = tweepy.API(auth)
-
-	# 1.3 Verify authorization
-	# Will fail for incorrect access tokens or consumer key/secrets
-	# Does not test posting permissions
-	api.lookup_users(screen_name=["MorningGloryBot"])
 
 	return api, pexel_key
 
@@ -123,12 +117,12 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	query = "query={}".format(d.get_obj())
 	color = "color={}".format(d.get_color(date_info["dow"]))
 	page = "page={}".format(random.randint(1,500)) # Randomly select from 500 images
-	per_page = "per_page=1"
-	url = f"https://api.pexels.com/v1/search?{query}&{color}&{page}&{per_page}"
+	per_page = "per_page=1" # Query for a single result - no need to waste bandwidth
+	query_url = f"https://api.pexels.com/v1/search?{query}&{color}&{page}&{per_page}"
 
 	# 3.2 Query Pexel for image
 	# 3.2.1 Get request for a random image
-	r = requests.get(url=url, headers={"Authorization":pexel_key})
+	r = requests.get(url=query_url, headers={"Authorization":pexel_key})
 	if r.status_code != 200:
 		print (f"Warning! Status code {r.status_code} on search request!")
 
@@ -138,7 +132,10 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	original_url = metadata["src"]["original"]
 
 	# 3.2.3 Use Pexel APIs to crop image for us
-	query_url = f"{original_url}?auto=compress&cs=tinysrgb&fit=crop&h=800&w=800"
+	height = f"&h={800}"
+	width = f"&w={800}"
+	crop = f"&fit=crop{height}{width}"
+	query_url = f"{original_url}?auto=compress&cs=tinysrgb{crop}"
 
 	# 3.2.4 Request for the image data, no Auth needed
 	r = requests.get(query_url)
@@ -154,11 +151,20 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	return image, metadata
 
 
-def get_font(greetings: list):
+def get_font(greetings: list) -> BytesIO:
+	"""
+	Function to query a random font from Google Fonts API.
+	Returns a file-like object instead of a Pillow font object, 
+	because we may have to reload the font object multiple times to reduce the size.
+	Returning a single file-like object prevents having to query the same data multiple times
 
-	# https://developers.google.com/fonts/docs/getting_started
-	# https://developers.google.com/fonts/docs/css2#individual_styles_such_as_weight
-	# https://pillow.readthedocs.io/en/stable/reference/ImageFont.html
+	Args:
+		greetings (list): Greeting text strings and watermark text, distilled into the minimum set of chars.
+		This helps Google API return the minimum ttf file that contains the character set we need.
+
+	Returns:
+		BytesIO: Returns a file-like object
+	"""
 
 	# Reduce full query text into minimum set of characters for Google fonts API query
 	query_text = "".join(greetings)
@@ -173,15 +179,18 @@ def get_font(greetings: list):
 
 	# Query Google Fonts API for font file URL
 	r = requests.get(query_url)
-	# Extract with Regex TODO
-	font_url = r.json()
+	# Extract with Regex
+	match = re.search(r"\((https.*?)\)", r.text)
+	font_url = match.groups()[0]
 
 	# Query for actual font binary
 	r = requests.get(font_url)
-	# Read into memory TODO How?
-	BytesIO(r.content)
+	# Read into memory : fp is a file-like object
+	# This is equivalent to:
+	# fp = open("font.ttf", "rb")
+	fp = BytesIO(r.content)
 
-	return
+	return fp
 
 
 def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
@@ -198,18 +207,14 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 		Image: Composited image
 	"""
 
-	# 4.1 Create transparent text layer to draw on
-	text_layer = Image.new("RGBA", image.size, (255,255,255,0))
-	# Draw object
-	draw = ImageDraw.Draw(text_layer)
+	# 4.1 Query random font from Google Fonts
+	# Returns a file pointer, as we may reload font again
+	# This prevents having to re-download anything, speeding up the process
+	# Need to append watermark text as part of required char set
+	watermark_text = "@MorningGloryBot"
+	font_fp = get_font(greetings + [watermark_text])
 
-	# 4.2 Select random font
-	font_list = [f.path for f in os.scandir(FONTS_DIR)]
-	font_path = random.choice(font_list)
-	font_size = 80
-	font = ImageFont.truetype(font_path, size=font_size, encoding="unic", layout_engine=ImageFont.LAYOUT_RAQM)
-
-	# 4.3 Select text styling / positioning
+	# 4.2 Select text styling / positioning
 	x, y = image.size
 	# Dict must be defined here due to the relative positioning used
 	text_style = {
@@ -226,28 +231,44 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	}
 	_name, style = random.choice(list(text_style.items()))
 
-	# 4.4 Decrease font size until text fits
+	# 4.3 Create transparent text layer to draw on
+	text_layer = Image.new("RGBA", image.size, (255,255,255,0))
+	draw = ImageDraw.Draw(text_layer)
+
+	# 4.4 Iteratively reduce font size until text fits in frame
+	font_size = 80
 	font_size_fit = False
 	while not font_size_fit:
-		tests = list()
+		# This is always False on the first iteration, forcing a load
+		if not font_size_fit:
+			# Need to seek pointer to start of file every time
+			font_fp.seek(0)
+			font = ImageFont.truetype(
+				font = font_fp, 
+				size = font_size,
+				encoding = "unic", 
+				layout_engine = ImageFont.LAYOUT_RAQM
+			)
+			# Reduces font size for the next iteration
+			font_size -= 2
+
+		# List boolean values, each a test for one text box
+		size_tests = list()
 		for text, xy, an, al in zip(greetings, style["coords"], style["anchor"], style["align"]):
 			# Generate text bbox
 			bbox = draw.textbbox(xy, text, font=font, anchor=an, align=al)
 			# Check if text bbox is in-bound
 			# Checks: (Lower bound) and (Upper bound)
-			tests.append( (bbox[:2] >= (0,0)) and (bbox[2:] <= image.size) )
-		# Must fit all text
-		font_size_fit = all(tests)
-		if not font_size_fit:
-			font_size -= 2
-			font = ImageFont.truetype(font_path, size=font_size, layout_engine=ImageFont.LAYOUT_RAQM)
+			size_tests.append( (bbox[:2] >= (0,0)) and (bbox[2:] <= image.size) )
+		# Check that all is True (text fits in boundary)
+		font_size_fit = all(size_tests)
 
 	# 4.5 Place text on image
 	fill = d.text_fill[date_info["dow"]] # Color by day of week
 	for text, xy, an, al in zip(greetings, style["coords"], style["anchor"], style["align"]):
 		draw.text(
-			xy,
-			text,
+			xy = xy,
+			text = text,
 			font = font,
 			fill = fill, 
 			stroke_fill = (0,0,0,255),
@@ -259,11 +280,17 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	# 4.6 Watermark image
 	# Get bottom-right coordinates for watermark
 	xy = [c-20 for c in image.size]
-	text = "@MorningGloryBot"
-	font = ImageFont.truetype(font_path, size=24)
+	# Need to seek pointer to start of file every time
+	font_fp.seek(0)
+	font = ImageFont.truetype(
+		font = font_fp,
+		size = 24,
+		encoding = "unic", 
+		layout_engine = ImageFont.LAYOUT_RAQM
+	)
 	draw.text(
 		xy, 
-		text, 
+		watermark_text, 
 		font = font,
 		fill = (255,255,255,128),
 		stroke_fill = (0,0,0,128),
@@ -271,10 +298,13 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 		anchor = "rb"
 	)
 
-	# Combine layers
-	combined = Image.alpha_composite(image, text_layer)
+	# Combine text and image layer into final output image
+	output = Image.alpha_composite(image, text_layer)
 
-	return combined
+	# Close font file pointer
+	font_fp.close()
+
+	return output
 
 
 def generate_tweet(date_info: dict, metadata: dict) -> str:
@@ -331,7 +361,7 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 
 
 if __name__ == "__main__":
-	# 1. Setup Twitter API
+	# 1. Setup API & Credentials
 	api, pexel_key = get_api()
 
 	# 2. Get date info
@@ -342,9 +372,6 @@ if __name__ == "__main__":
 
 	# 3. Get random stock image
 	image, metadata = get_stock_image(date_info, pexel_key)
-
-	# Get random font
-	font = get_font(greetings)
 
 	# 4. Generate blessing image
 	output_image = compose_image(date_info, greetings, image)
