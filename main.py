@@ -1,3 +1,24 @@
+# Toggle production-development here (os environment variable name)
+PRODUCTION = False
+if PRODUCTION:
+	API_KEY = "PROD_API_KEY"
+	API_SECRET = "PROD_API_SECRET"
+	ACCESS_TOKEN = "PROD_ACCESS_TOKEN"
+	ACCESS_SECRET = "PROD_ACCESS_SECRET"
+	PEXEL_KEY = "PEXEL_KEY"
+else:
+	API_KEY = "DEV_API_KEY"
+	API_SECRET = "DEV_API_SECRET"
+	ACCESS_TOKEN = "DEV_ACCESS_TOKEN"
+	ACCESS_SECRET = "DEV_ACCESS_SECRET"
+	PEXEL_KEY = "PEXEL_KEY"
+
+
+# ============================================================================ #
+# ============================================================================ #
+# ============================================================================ #
+
+
 from datetime import datetime
 from io import BytesIO
 import logging
@@ -12,6 +33,8 @@ import tweepy
 
 import dictionary as d
 
+
+# Setup logging facilities
 class ansi:
 	HEADER = '\033[95m'
 	OKBLUE = '\033[94m'
@@ -23,16 +46,21 @@ class ansi:
 	BOLD = '\033[1m'
 	UNDERLINE = '\033[4m'
 
-
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 logging.basicConfig(
 	filename=f"log/{timestamp}.log",
 	level=logging.INFO,
-	format=f"{ansi.HEADER}[%(asctime)s][%(levelname)-8s]{ansi.ENDC} %(message)s",
+	format=f"{ansi.HEADER}[%(asctime)s] %(levelname)-8s %(funcName)-15s{ansi.ENDC} %(message)s",
 	datefmt="%Y-%m-%d %H:%M:%S"
 )
 logging.captureWarnings(True)
+
 OK_LOG = lambda: logging.info(f"{ansi.OKGREEN}OK{ansi.ENDC}")
+
+
+# ============================================================================ #
+# ============================================================================ #
+# ============================================================================ #
 
 
 def get_api():
@@ -53,11 +81,11 @@ def get_api():
 	logging.info("Setting up API...")
 
 	# 1.1 Read credentials from system environment
-	consumer_key = os.getenv("DEV_API_KEY")
-	consumer_secret = os.getenv("DEV_API_SECRET")
-	access_token = os.getenv("DEV_ACCESS_TOKEN")
-	access_token_secret = os.getenv("DEV_ACCESS_SECRET")
-	pexel_key = os.getenv("PEXEL_KEY")
+	consumer_key = os.getenv(API_KEY)
+	consumer_secret = os.getenv(API_SECRET)
+	access_token = os.getenv(ACCESS_TOKEN)
+	access_token_secret = os.getenv(ACCESS_SECRET)
+	pexel_key = os.getenv(PEXEL_KEY)
 
 	# # 1.2 Setup Twitter APIv1.1
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
@@ -103,7 +131,7 @@ def get_date_info() -> dict:
 	return date_info
 
 
-def generate_greetings(date_info: dict) -> list():
+def gen_greetings(date_info: dict) -> list():
 	"""
 	Function to generate the greetings, separated into two parts.
 	The first is the intro-greetings. -> Hello, today is the day...
@@ -131,7 +159,7 @@ def generate_greetings(date_info: dict) -> list():
 	return output
 
 
-def get_stock_image(date_info: dict, pexel_key: str):
+def get_stock_img(date_info: dict, pexel_key: str):
 	"""
 	Function to get stock image from Pexel.
 	Randomly pick based on color of the day.
@@ -195,7 +223,7 @@ def get_stock_image(date_info: dict, pexel_key: str):
 	return image, metadata
 
 
-def get_font(greetings: list) -> BytesIO:
+def get_font(greetings: list, metadata: dict):
 	"""
 	Function to query a random font from Google Fonts API.
 	Returns a file-like object instead of a Pillow font object, 
@@ -218,9 +246,11 @@ def get_font(greetings: list) -> BytesIO:
 	web_text = urllib.parse.quote(query_char)
 
 	base_url = "https://fonts.googleapis.com/css2?"
-	family = f"family={d.font()}"
+	font = d.font()
+	family = f"family={font}"
 	text = f"&text={web_text}"
 	query_url = f"{base_url}{family}{text}"
+	metadata["font"] = font # Store name for attribution
 
 	# Query Google Fonts API for font file URL
 	r = requests.get(query_url)
@@ -244,10 +274,10 @@ def get_font(greetings: list) -> BytesIO:
 	# Log selected font
 	logging.info(f"{ansi.OKCYAN}Selected font: {family}{ansi.ENDC}")
 	OK_LOG()
-	return fp
+	return fp, metadata
 
 
-def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
+def compose_img(date_info: dict, greetings: list, image: Image, metadata: dict):
 	"""
 	Function to combine base image and blessings into the output image.
 	Requires libraqm for the correct layout (unix only).
@@ -267,7 +297,7 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	# This prevents having to re-download anything, speeding up the process
 	# Need to append watermark text as part of required char set
 	watermark_text = "@MorningGloryBot"
-	font_fp = get_font(greetings + [watermark_text])
+	font_fp, metadata = get_font(greetings + [watermark_text], metadata)
 
 	# 4.2 Select text styling / positioning
 	x, y = image.size
@@ -359,10 +389,10 @@ def compose_image(date_info: dict, greetings: list, image: Image) -> Image:
 	# Close font file pointer
 	font_fp.close()
 	OK_LOG()
-	return output
+	return output, metadata
 
 
-def generate_tweet(date_info: dict, metadata: dict) -> str:
+def gen_tweet(date_info: dict, metadata: dict) -> str:
 	"""
 	Function to generate the tweet text itself.
 	Includes the greetings hashtag for finding on twitter.
@@ -379,8 +409,9 @@ def generate_tweet(date_info: dict, metadata: dict) -> str:
 
 	# 5. Generate tweet text
 	hashtag = f"#สวัสดี{d.dow_th[date_info['dow']]}"
-	attribute = f"Photo by {metadata['photographer']} | Pexels.com"
-	tweet = f"{hashtag}\n{attribute}"
+	img_attribute = f"{metadata['photographer']} | pexels.com"
+	font_attribute = f"{metadata['font']} | fonts.google.com"
+	tweet = f"{hashtag}\n{img_attribute}\n{font_attribute}"
 
 	logging.info(f"{ansi.OKCYAN}Generated tweet text: {tweet}{ansi.ENDC}")
 	OK_LOG()
@@ -430,16 +461,16 @@ if __name__ == "__main__":
 	date_info = get_date_info()
 
 	# 2. Generate random blessing
-	greetings = generate_greetings(date_info)
+	greetings = gen_greetings(date_info)
 
 	# 3. Get random stock image
-	image, metadata = get_stock_image(date_info, pexel_key)
+	image, metadata = get_stock_img(date_info, pexel_key)
 
 	# 4. Generate blessing image
-	output_image = compose_image(date_info, greetings, image)
+	output_image, metadata = compose_img(date_info, greetings, image, metadata)
 
 	# 5. Generate tweet text
-	tweet_text = generate_tweet(date_info, metadata)
+	tweet_text = gen_tweet(date_info, metadata)
 
 	# 6. Post to Twitter
 	post_result(api, output_image, tweet_text)
