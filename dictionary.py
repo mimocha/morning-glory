@@ -81,6 +81,14 @@ __fonts_list = [
 	"Charmonman",
 	"Itim",
 	"Krub",
+	"Mali",
+	"Maitree",
+	"Mitr",
+	"Pattaya",
+	"Pridi",
+	"Prompt",
+	"Sriracha",
+	"Taviraj"
 ]
 font = lambda: random.choice(__fonts_list)
 
