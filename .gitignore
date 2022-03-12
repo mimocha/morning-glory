@@ -1,4 +1,5 @@
 */
 __pycache__/
-# Ignore credential file
-credentials.json
+# Track log directory, but ignore everything else
+!log/
+log/*
