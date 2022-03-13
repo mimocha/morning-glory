@@ -47,8 +47,10 @@ class ansi:
 	UNDERLINE = '\033[4m'
 
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+dirname = os.path.dirname(os.path.abspath(__file__))
+filename = os.path.join(dirname, 'log', f'{timestamp}.log')
 logging.basicConfig(
-	filename=f"log/{timestamp}.log",
+	filename=filename,
 	level=logging.INFO,
 	format=f"{ansi.HEADER}[%(asctime)s] %(levelname)-8s %(funcName)-15s{ansi.ENDC} %(message)s",
 	datefmt="%Y-%m-%d %H:%M:%S"
