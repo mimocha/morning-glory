@@ -34,27 +34,15 @@ import tweepy
 import dictionary as d
 
 
-# Setup logging facilities
-class ansi:
-	HEADER = '\033[95m'
-	OKBLUE = '\033[94m'
-	OKCYAN = '\033[96m'
-	OKGREEN = '\033[92m'
-	WARNING = '\033[93m'
-	FAIL = '\033[91m'
-	ENDC = '\033[0m'
-	BOLD = '\033[1m'
-	UNDERLINE = '\033[4m'
-
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 logging.basicConfig(
 	level=logging.INFO,
-	format=f"{ansi.HEADER}[%(asctime)s] %(levelname)-8s %(funcName)-15s{ansi.ENDC} %(message)s",
+	format=f"[%(asctime)s] %(levelname)-8s %(funcName)-15s %(message)s",
 	datefmt="%Y-%m-%d %H:%M:%S"
 )
 logging.captureWarnings(True)
 
-OK_LOG = lambda: logging.info(f"{ansi.OKGREEN}OK{ansi.ENDC}")
+OK_LOG = lambda: logging.info(f"OK")
 
 
 # ============================================================================ #
@@ -80,11 +68,11 @@ def get_api():
 	logging.info("Setting up API...")
 
 	# 1.1 Read credentials from system environment
-	consumer_key = os.getenv(API_KEY)
-	consumer_secret = os.getenv(API_SECRET)
-	access_token = os.getenv(ACCESS_TOKEN)
-	access_token_secret = os.getenv(ACCESS_SECRET)
-	pexel_key = os.getenv(PEXEL_KEY)
+	consumer_key = API_KEY
+	consumer_secret = API_SECRET
+	access_token = ACCESS_TOKEN
+	access_token_secret = ACCESS_SECRET
+	pexel_key = PEXEL_KEY
 
 	# # 1.2 Setup Twitter APIv1.1
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
@@ -153,7 +141,7 @@ def gen_greetings(date_info: dict) -> list():
 	# 2.2 Generate based on holidays
 
 	# Log generated text
-	logging.info(f"{ansi.OKCYAN}Generated blessing: {output}{ansi.ENDC}")
+	logging.info(f"Generated blessing: {output}")
 	OK_LOG()
 	return output
 
@@ -174,8 +162,19 @@ def get_stock_img(date_info: dict, pexel_key: str):
 	logging.info("Getting stock image...")
 
 	# 3.1 Generate image query for day of the week
-	image_found = False
-	while not image_found:
+	# Retry 3-times max
+	count = 0
+	image_found = False # Image found flag
+	is_500_resp = False # Pexel returned 500 flag
+	while (not image_found) or is_500_resp:
+		count += 1
+		if count > 3:
+			logging.error(f"Pexel request failed after {count} attempts")
+			exit()
+		else:
+			logging.info(f"Pexel request attempt {count}")
+
+		# 3.1.1 Generate query
 		query = "query={}".format(d.get_obj())
 		color = "color={}".format(d.get_color(date_info["dow"]))
 		page = "page={}".format(random.randint(1,1000)) # Randomly select image
@@ -183,15 +182,21 @@ def get_stock_img(date_info: dict, pexel_key: str):
 		query_url = f"https://api.pexels.com/v1/search?{query}&{color}&{page}&{per_page}"
 
 		# 3.1.2 Query Pexel for image
-		r = requests.get(url=query_url, headers={"Authorization":pexel_key})
+		header = {"Authorization":pexel_key}
+		r = requests.get(url=query_url, headers=header)
 		if r.status_code != 200:
-			logging.warning(f"{ansi.WARNING}Status code {r.status_code} on Pexel search request! Reason: {r.reason}{ansi.ENDC}")
-			logging.warning(f"{ansi.WARNING}Pexel search query: {query_url}{ansi.ENDC}")
+			logging.warning(f"Status code {r.status_code} on Pexel search request! Reason: {r.reason}")
+			logging.warning(f"Pexel search query: {query_url}")
+			logging.warning(f"Request Header: {header}")
 
-		# 3.1.3 Test if response is not empty
-		# In off chance the page number will not have an image
-		# This catches those rare cases
-		image_found = r.json()['total_results'] > 0
+		# 3.1.3 Check for 500 Server Error responses
+		# Triggers loop if REST response code is 500
+		is_500_resp = (r.status_code == 500)
+
+		# 3.1.4 Check if an image is found
+		# Triggers loop if no image was returned from request
+		image_found = (r.json()['total_results'] > 0)
+	logging.info(f"Image retrieved from query: {query_url}")
 
 	# 3.2 Extract image URL & metadata from response
 	response = r.json()
@@ -207,8 +212,8 @@ def get_stock_img(date_info: dict, pexel_key: str):
 	# 3.4 Request for the image data, no Auth needed
 	r = requests.get(query_url)
 	if r.status_code != 200:
-		logging.warning(f"{ansi.WARNING}Status code {r.status_code} on Pexel image download! Reason: {r.reason}{ansi.ENDC}")
-		logging.warning(f"{ansi.WARNING}Pexel download query: {query_url}{ansi.ENDC}")
+		logging.warning(f"Status code {r.status_code} on Pexel image download! Reason: {r.reason}")
+		logging.warning(f"Pexel download query: {query_url}")
 	# Convert response binary data into PIL image
 	# https://docs.python-requests.org/en/latest/user/quickstart/#binary-response-content
 	image = Image.open(BytesIO(r.content))
@@ -217,7 +222,7 @@ def get_stock_img(date_info: dict, pexel_key: str):
 	image = image.convert("RGBA")
 
 	# Log image found
-	logging.info(f"{ansi.OKCYAN}Selected image: {metadata['id']} by {metadata['photographer']} : {metadata['url']}{ansi.ENDC}")
+	logging.info(f"Selected image: {metadata['id']} by {metadata['photographer']} : {metadata['url']}")
 	OK_LOG()
 	return image, metadata
 
@@ -254,8 +259,8 @@ def get_font(greetings: list, metadata: dict):
 	# Query Google Fonts API for font file URL
 	r = requests.get(query_url)
 	if r.status_code != 200:
-		logging.warning(f"{ansi.WARNING}Status code {r.status_code} on Google Fonts request! Reason {r.reason}{ansi.ENDC}")
-		logging.warning(f"{ansi.WARNING}Google Fonts Query URL: {query_url}{ansi.ENDC}")
+		logging.warning(f"Status code {r.status_code} on Google Fonts request! Reason {r.reason}")
+		logging.warning(f"Google Fonts Query URL: {query_url}")
 	# Extract with Regex
 	match = re.search(r"\((https.*?)\)", r.text)
 	font_url = match.groups()[0]
@@ -263,15 +268,15 @@ def get_font(greetings: list, metadata: dict):
 	# Query for actual font binary
 	r = requests.get(font_url)
 	if r.status_code != 200:
-		logging.warning(f"{ansi.WARNING}Status code {r.status_code} on Google Fonts download! Reason: {r.reason}{ansi.ENDC}")
-		logging.warning(f"{ansi.WARNING}Google Fonts Download URL: {query_url}{ansi.ENDC}")
+		logging.warning(f"Status code {r.status_code} on Google Fonts download! Reason: {r.reason}")
+		logging.warning(f"Google Fonts Download URL: {query_url}")
 	# Read into memory : fp is a file-like object
 	# This is equivalent to:
 	# fp = open("font.ttf", "rb")
 	fp = BytesIO(r.content)
 
 	# Log selected font
-	logging.info(f"{ansi.OKCYAN}Selected font: {family}{ansi.ENDC}")
+	logging.info(f"Selected font: {family}")
 	OK_LOG()
 	return fp, metadata
 
@@ -412,7 +417,7 @@ def gen_tweet(date_info: dict, metadata: dict) -> str:
 	font_attribute = f"{metadata['font']} | fonts.google.com"
 	tweet = f"{hashtag}\n{img_attribute}\n{font_attribute}"
 
-	logging.info(f"{ansi.OKCYAN}Generated tweet text: {tweet}{ansi.ENDC}")
+	logging.info(f"Generated tweet text: {tweet}")
 	OK_LOG()
 	return tweet
 
@@ -447,7 +452,7 @@ def post_result(api: tweepy.API, image: Image, tweet_text: str):
 	)
 
 	# Log OK
-	logging.info(f"{ansi.OKCYAN}Tweeted successfully at: UTC {datetime.now()}{ansi.ENDC}")
+	logging.info(f"Tweeted successfully at: UTC {datetime.now()}")
 	OK_LOG()
 	return
 
