@@ -3,3 +3,6 @@ __pycache__/
 # Track log directory, but ignore everything else
 !log/
 log/*
+
+# ignore auth file
+auth.py
