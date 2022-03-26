@@ -1,17 +1,16 @@
-# Toggle production-development here (os environment variable name)
+# Toggle production-development here
 PRODUCTION = True
 if PRODUCTION:
 	API_KEY = "PROD_API_KEY"
 	API_SECRET = "PROD_API_SECRET"
 	ACCESS_TOKEN = "PROD_ACCESS_TOKEN"
 	ACCESS_SECRET = "PROD_ACCESS_SECRET"
-	PEXEL_KEY = "PEXEL_KEY"
 else:
 	API_KEY = "DEV_API_KEY"
 	API_SECRET = "DEV_API_SECRET"
 	ACCESS_TOKEN = "DEV_ACCESS_TOKEN"
 	ACCESS_SECRET = "DEV_ACCESS_SECRET"
-	PEXEL_KEY = "PEXEL_KEY"
+PEXEL_KEY = "PEXEL_KEY"
 
 
 # ============================================================================ #
@@ -22,7 +21,6 @@ else:
 from datetime import datetime
 from io import BytesIO
 import logging
-import os
 import random; random.seed()
 import re
 import urllib.parse
@@ -32,6 +30,8 @@ import requests
 import tweepy
 
 import dictionary as d
+# Write to python file instead of JSON to avoid issues with file path
+from auth import auth as A
 
 
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -55,11 +55,9 @@ def get_api():
 	Function to setup Twitter API v1.1
 	Using v1.1 instead of v2 because media upload requires v1.1 anyway.
 	
-	Keys & Secrets are stored in Azure Key Vault.
-	Then Azure Function references those secrets via secret identifier.
-	The keys become available as os environment variables.
-	Reference Guide:
-	https://levelup.gitconnected.com/a-secure-way-to-use-credentials-and-secrets-in-azure-functions-7ec91813c807
+	Keys & Secrets are stored in a python file with dicts.
+	Azure Keyvault and stuff was causing issues when loading and was a complete pain.
+	Not "best practice" but whatever.
 
 	Returns:
 		tweepy.API: The Twitter API object
@@ -67,12 +65,12 @@ def get_api():
 	"""
 	logging.info("Setting up API...")
 
-	# 1.1 Read credentials from system environment
-	consumer_key = API_KEY
-	consumer_secret = API_SECRET
-	access_token = ACCESS_TOKEN
-	access_token_secret = ACCESS_SECRET
-	pexel_key = PEXEL_KEY
+	# 1.1 Read credentials from auth file
+	consumer_key = A.get(API_KEY)
+	consumer_secret = A.get(API_SECRET)
+	access_token = A.get(ACCESS_TOKEN)
+	access_token_secret = A.get(ACCESS_SECRET)
+	pexel_key = A.get(PEXEL_KEY)
 
 	# # 1.2 Setup Twitter APIv1.1
 	auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
