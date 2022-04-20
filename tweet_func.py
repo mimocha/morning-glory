@@ -161,13 +161,13 @@ def get_stock_img(date_info: dict, pexel_key: str):
 
 	# 3.1 Generate image query for day of the week
 	# Retry 3-times max
-	count = 0
+	count = 1
+	limit = 3
 	image_found = False # Image found flag
-	is_500_resp = False # Pexel returned 500 flag
-	while (not image_found) or is_500_resp:
-		count += 1
-		if count > 3:
-			logging.error(f"Pexel request failed after {count} attempts")
+	is_200_resp = False # Pexel returned 200 flag
+	while (not image_found) or (not is_200_resp):
+		if count > limit:
+			logging.error(f"Pexel request failed after {limit} attempts")
 			exit()
 		else:
 			logging.info(f"Pexel request attempt {count}")
@@ -188,13 +188,20 @@ def get_stock_img(date_info: dict, pexel_key: str):
 			logging.warning(f"Request Header: {header}")
 
 		# 3.1.3 Check for 500 Server Error responses
-		# Triggers loop if REST response code is 500
-		is_500_resp = (r.status_code == 500)
+		# Triggers loop if REST response code is not 200
+		is_200_resp = (r.status_code == 200)
+		if (not is_200_resp):
+			logging.info(f"\tAttempt failed, response code: {r.status_code}")
 
 		# 3.1.4 Check if an image is found
 		# Triggers loop if no image was returned from request
-		image_found = (r.json()['total_results'] > 0)
-	logging.info(f"Image retrieved from query: {query_url}")
+		image_found = (len(r.json()['photos']) == 1)
+		if (not image_found):
+			logging.info(f"\tAttempt failed, image not found.")
+
+		# Increment attempt count at end of loop
+		count += 1
+	logging.info(f"Image successfully retrieved from query: {query_url}")
 
 	# 3.2 Extract image URL & metadata from response
 	response = r.json()
